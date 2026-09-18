@@ -12,7 +12,8 @@ locals {
   admin_password = coalesce(var.admin_password, try(random_password.admin[0].result, null))
 
   bootstrap_script = templatefile("${path.module}/scripts/bootstrap.ps1.tftpl", {
-    ssh_public_key = var.ssh_public_key
+    ssh_public_key         = var.ssh_public_key
+    additional_mounts_json = jsonencode(var.additional_mounts)
   })
 }
 
@@ -76,6 +77,19 @@ resource "vsphere_virtual_machine" "this" {
     size             = coalesce(var.disk_size_gb, data.vsphere_virtual_machine.template.disks[0].size)
     eagerly_scrub    = data.vsphere_virtual_machine.template.disks[0].eagerly_scrub
     thin_provisioned = data.vsphere_virtual_machine.template.disks[0].thin_provisioned
+  }
+
+  # Additional data disks - initialized, brought online, and formatted by
+  # the bootstrap script. unit_number skips 7 (reserved for the SCSI
+  # controller itself), which only matters once you're attaching 7+ data
+  # disks on a single controller.
+  dynamic "disk" {
+    for_each = var.data_disks
+    content {
+      label       = "disk${disk.key + 1}"
+      unit_number = disk.key + 1
+      size        = disk.value.size_gb
+    }
   }
 
   clone {

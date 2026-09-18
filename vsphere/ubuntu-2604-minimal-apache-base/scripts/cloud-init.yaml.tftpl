@@ -21,6 +21,15 @@ packages:
 %{ if enable_unattended_upgrades ~}
   - unattended-upgrades
 %{ endif ~}
+%{ if length([for m in additional_mounts : m if m.type == "nfs"]) > 0 ~}
+  - nfs-common
+%{ endif ~}
+%{ if length([for m in additional_mounts : m if m.type == "smb"]) > 0 ~}
+  - cifs-utils
+%{ endif ~}
+%{ if length([for m in additional_mounts : m if m.type == "s3"]) > 0 ~}
+  - s3fs
+%{ endif ~}
 
 write_files:
   - path: /etc/apache2/conf-available/harden.conf
@@ -62,3 +71,34 @@ runcmd:
   - dpkg-reconfigure -f noninteractive unattended-upgrades
   - systemctl enable --now unattended-upgrades
 %{ endif ~}
+
+  # Additional local data disks (data_disks variable): format (ext4) and
+  # mount any attached block device that has no filesystem yet. Idempotent
+  # - a disk with an existing filesystem is left alone on re-runs/reboots.
+  - |
+    n=0
+    for disk in $(lsblk -ndp -o NAME,TYPE,FSTYPE | awk '$2=="disk" && $3==""{print $1}'); do
+      mkfs.ext4 -F "$disk"
+      mountpoint="/mnt/data$n"
+      mkdir -p "$mountpoint"
+      mount "$disk" "$mountpoint"
+      echo "$disk $mountpoint ext4 defaults,nofail 0 2" >> /etc/fstab
+      n=$((n+1))
+    done
+
+  # Additional network storage mounts (additional_mounts variable): NFS,
+  # SMB/CIFS, or S3 (via s3fs). This does not create the storage, only
+  # mounts it - the source must already exist.
+%{ for m in additional_mounts ~}
+  - mkdir -p ${m.mount_point}
+%{ if m.type == "nfs" ~}
+  - mount -t nfs4 ${m.options != "" ? "-o ${m.options} " : ""}${m.source} ${m.mount_point}
+  - echo "${m.source} ${m.mount_point} nfs4 ${m.options != "" ? m.options : "defaults,_netdev"} 0 0" >> /etc/fstab
+%{ endif ~}
+%{ if m.type == "smb" ~}
+  - mount -t cifs ${m.source} ${m.mount_point} -o ${m.options != "" ? m.options : "guest,vers=3.0,_netdev"}
+%{ endif ~}
+%{ if m.type == "s3" ~}
+  - s3fs ${m.source} ${m.mount_point} -o ${m.options != "" ? m.options : "iam_role=auto,allow_other,_netdev"}
+%{ endif ~}
+%{ endfor ~}

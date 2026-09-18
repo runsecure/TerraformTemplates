@@ -53,6 +53,29 @@ different from all of them - read this whole README before using it.
   (sysprep), not by the bootstrap script - Terraform generates one if you
   don't supply `admin_password`.
 
+## Sizing and storage
+
+Unlike the cloud templates, vSphere lets you dial vCPU, memory, and disk
+size independently - there's no fixed SKU catalog:
+
+- **`num_cpus`** / **`memory_mb`** set vCPU and memory directly.
+- **`disk_size_gb`** sizes the primary disk (null inherits the template's
+  own size).
+- **`data_disks`** attaches additional virtual disks on the same
+  datastore beyond the primary disk (each `{ size_gb }`), as native
+  vSphere disk devices. The bootstrap script brings each one online,
+  initializes it GPT, and formats it NTFS automatically.
+- **`additional_mounts`** mounts *existing* network storage inside the VM
+  at boot - an NFS export or an SMB/CIFS share reachable on your network.
+  This does not provision the storage itself. S3 has no native Windows
+  mount path, so `type = "s3"` entries are skipped with a warning.
+  Example:
+  ```hcl
+  additional_mounts = [
+    { type = "smb", source = "\\\\fileserver\\share", mount_point = "Z:" },
+  ]
+  ```
+
 ## What gets installed
 
 Via `Install-WindowsFeature` (see `scripts/bootstrap.ps1.tftpl`, delivered

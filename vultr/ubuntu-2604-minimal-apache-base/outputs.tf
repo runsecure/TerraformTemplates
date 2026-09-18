@@ -17,3 +17,8 @@ output "firewall_group_id" {
   description = "Vultr firewall group protecting the instance."
   value       = vultr_firewall_group.this.id
 }
+
+output "data_disk_ids" {
+  description = "IDs of the additional Block Storage volumes attached, if any (see the data_disks variable)."
+  value       = vultr_block_storage.data[*].id
+}

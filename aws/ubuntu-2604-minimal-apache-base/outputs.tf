@@ -27,3 +27,8 @@ output "security_group_id" {
   description = "Security group protecting the instance."
   value       = aws_security_group.this.id
 }
+
+output "data_disk_ids" {
+  description = "EBS volume IDs of the additional data disks attached, if any (see the data_disks variable)."
+  value       = aws_ebs_volume.data[*].id
+}

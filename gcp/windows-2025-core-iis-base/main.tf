@@ -6,9 +6,19 @@ locals {
   network_tag    = "${var.name_prefix}-vm"
   admin_password = coalesce(var.admin_password, try(random_password.admin[0].result, null))
 
+  # A custom machine type (independent vCPU/memory dialing) overrides
+  # machine_type entirely when both custom_cpu_count and custom_memory_mb
+  # are set.
+  machine_type = (
+    var.custom_cpu_count != null && var.custom_memory_mb != null
+    ? "custom-${var.custom_cpu_count}-${var.custom_memory_mb}"
+    : var.machine_type
+  )
+
   bootstrap_script = templatefile("${path.module}/scripts/bootstrap.ps1.tftpl", {
-    ssh_public_key = var.ssh_public_key
-    admin_password = local.admin_password
+    ssh_public_key         = var.ssh_public_key
+    admin_password         = local.admin_password
+    additional_mounts_json = jsonencode(var.additional_mounts)
   })
 }
 
@@ -84,9 +94,20 @@ resource "google_compute_address" "this" {
 
 # --- Compute ------------------------------------------------------------
 
+# Additional data disks - initialized, brought online, and formatted by
+# the bootstrap script (see scripts/bootstrap.ps1.tftpl).
+resource "google_compute_disk" "data" {
+  count = length(var.data_disks)
+
+  name = "${var.name_prefix}-data-${count.index}"
+  zone = var.zone
+  type = var.data_disks[count.index].type
+  size = var.data_disks[count.index].size_gb
+}
+
 resource "google_compute_instance" "this" {
   name         = "${var.name_prefix}-vm-${random_id.suffix.hex}"
-  machine_type = var.machine_type
+  machine_type = local.machine_type
   zone         = var.zone
   tags         = [local.network_tag]
   labels       = var.labels
@@ -96,6 +117,13 @@ resource "google_compute_instance" "this" {
       image = data.google_compute_image.windows.self_link
       size  = var.boot_disk_size_gb
       type  = var.boot_disk_type
+    }
+  }
+
+  dynamic "attached_disk" {
+    for_each = google_compute_disk.data
+    content {
+      source = attached_disk.value.self_link
     }
   }
 

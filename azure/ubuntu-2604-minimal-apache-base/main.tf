@@ -8,6 +8,7 @@ locals {
   cloud_init = templatefile("${path.module}/scripts/cloud-init.yaml.tftpl", {
     enable_fail2ban            = var.enable_fail2ban
     enable_unattended_upgrades = var.enable_unattended_upgrades
+    additional_mounts          = var.additional_mounts
   })
 }
 
@@ -140,6 +141,7 @@ resource "azurerm_linux_virtual_machine" "this" {
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = var.os_disk_type
+    disk_size_gb         = var.os_disk_size_gb
   }
 
   secure_boot_enabled        = var.enable_trusted_launch
@@ -151,4 +153,27 @@ resource "azurerm_linux_virtual_machine" "this" {
   custom_data = base64encode(local.cloud_init)
 
   boot_diagnostics {}
+}
+
+# Additional data disks - formatted (ext4) and mounted under /mnt/dataN by
+# cloud-init (see scripts/cloud-init.yaml.tftpl).
+resource "azurerm_managed_disk" "data" {
+  count = length(var.data_disks)
+
+  name                 = "${var.name_prefix}-data-${count.index}"
+  resource_group_name  = azurerm_resource_group.this.name
+  location             = azurerm_resource_group.this.location
+  storage_account_type = var.data_disks[count.index].type
+  create_option        = "Empty"
+  disk_size_gb         = var.data_disks[count.index].size_gb
+  tags                 = var.tags
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "data" {
+  count = length(var.data_disks)
+
+  managed_disk_id    = azurerm_managed_disk.data[count.index].id
+  virtual_machine_id = azurerm_linux_virtual_machine.this.id
+  lun                = count.index
+  caching            = "ReadWrite"
 }

@@ -27,3 +27,8 @@ output "admin_username" {
   description = "SSH username for management (Ansible), authorized via ssh_public_key. Password login is disabled."
   value       = var.admin_username
 }
+
+output "data_disk_ids" {
+  description = "Self-links of the additional data disks attached, if any (see the data_disks variable)."
+  value       = google_compute_disk.data[*].self_link
+}

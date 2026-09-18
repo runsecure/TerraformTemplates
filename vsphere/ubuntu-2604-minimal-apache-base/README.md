@@ -51,6 +51,28 @@ whole README before using it.
 - Apache is minimally configured: `ServerTokens Prod`, `ServerSignature Off`,
   `TraceEnable Off` to avoid leaking version/banner information.
 
+## Sizing and storage
+
+Unlike the cloud templates, vSphere lets you dial vCPU, memory, and disk
+size independently - there's no fixed SKU catalog:
+
+- **`num_cpus`** / **`memory_mb`** set vCPU and memory directly.
+- **`disk_size_gb`** sizes the primary disk (null inherits the template's
+  own size).
+- **`data_disks`** attaches additional virtual disks on the same
+  datastore beyond the primary disk (each `{ size_gb }`), as native
+  vSphere disk devices. cloud-init formats each one ext4 and mounts it
+  under `/mnt/dataN` automatically.
+- **`additional_mounts`** mounts *existing* network storage inside the VM
+  at boot - an NFS export or an SMB/CIFS share reachable on your network,
+  or an S3(-compatible) bucket (via `s3fs`). This does not provision the
+  storage itself. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "10.10.10.5:/export", mount_point = "/mnt/shared" },
+  ]
+  ```
+
 ## Usage
 
 ```hcl

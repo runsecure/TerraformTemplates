@@ -63,6 +63,29 @@ unreachable-by-design the way the hyperscaler templates default to. Keep
 - IPv6 is disabled by default (`enable_ipv6 = false`) to keep the exposed
   surface to a single stack that the firewall group actually covers.
 
+## Sizing and storage
+
+- **`plan`** bundles vCPU, memory, *and* the boot disk size together -
+  Vultr has no independent knobs for any of these. Pick a plan matching
+  what you need via `vultr-cli plans list`.
+- **`data_disks`** attaches additional Vultr Block Storage volumes beyond
+  the plan's included disk (each `{ size_gb }`). The bootstrap script
+  brings each one online, initializes it GPT, and formats it NTFS
+  automatically. See the `data_disk_ids` output. **The
+  `vultr_block_storage` resource's exact schema (particularly the
+  `attached_to_instance` attribute used here) is one more thing to verify
+  against the current provider docs** - see "Verify before use" above.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export, an SMB/CIFS share, or an S3 bucket.
+  This does not provision the storage itself. S3 has no native Windows
+  mount path, so `type = "s3"` entries are skipped with a warning.
+  Example:
+  ```hcl
+  additional_mounts = [
+    { type = "smb", source = "\\\\203.0.113.20\\share", mount_point = "Z:" },
+  ]
+  ```
+
 ## What gets installed
 
 Via `Install-WindowsFeature` (see `scripts/bootstrap.ps1.tftpl`, delivered

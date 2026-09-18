@@ -65,6 +65,45 @@ variable "disk_size_gb" {
   default     = null
 }
 
+variable "data_disks" {
+  description = <<-EOT
+    Additional virtual disks to attach to the VM beyond the primary disk,
+    as native vSphere disk devices on the same datastore. Each is
+    initialized, brought online, and formatted (NTFS) automatically by
+    the bootstrap script - no manual disk management needed in the guest.
+    This is for extra local block storage; for existing shared network
+    storage (an NFS export, an SMB share, an S3 bucket), use
+    additional_mounts instead.
+  EOT
+  type = list(object({
+    size_gb = number
+  }))
+  default = []
+}
+
+variable "additional_mounts" {
+  description = <<-EOT
+    Existing network storage to mount inside the VM after boot - e.g. an
+    NFS export (a NAS on the same network, EFS/Filestore reachable via
+    VPN, etc.), an SMB/CIFS share, or an S3 bucket. This does not create
+    the storage itself, only mounts it - the source must already exist.
+    S3 has no native Windows mount path; entries of type "s3" are
+    skipped with a warning - use the AWS CLI/SDK or rclone instead.
+  EOT
+  type = list(object({
+    type        = string           # "nfs" | "smb" | "s3"
+    source      = string           # e.g. "10.10.10.5:/export" or "\\\\server\\share"
+    mount_point = string           # drive letter, e.g. "Z:"
+    options     = optional(string, "")
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for m in var.additional_mounts : contains(["nfs", "smb", "s3"], m.type)])
+    error_message = "additional_mounts[*].type must be one of: nfs, smb, s3."
+  }
+}
+
 variable "admin_username" {
   description = "Local administrator username on the VM. This account's authorized_keys is used for SSH access."
   type        = string

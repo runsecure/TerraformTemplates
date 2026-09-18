@@ -11,7 +11,14 @@ variable "region" {
 }
 
 variable "plan" {
-  description = "Vultr plan ID. See `vultr-cli plans list`."
+  description = <<-EOT
+    Vultr plan ID. Unlike the hyperscaler templates in this repo, vCPU,
+    memory, and the boot disk size are all bundled into this single plan
+    selection - Vultr has no separate boot-disk-size or independent
+    cpu/memory knobs. See `vultr-cli plans list` to pick a plan matching
+    what you need; use data_disks below for extra storage beyond what the
+    plan includes.
+  EOT
   type        = string
   default     = "vc2-1c-2gb"
 }
@@ -103,4 +110,42 @@ variable "enable_unattended_upgrades" {
   description = "Install and enable unattended-upgrades for automatic security patching."
   type        = bool
   default     = true
+}
+
+variable "data_disks" {
+  description = <<-EOT
+    Additional Vultr Block Storage volumes to attach to the instance
+    beyond the plan's included disk. Each is formatted (ext4) and mounted
+    under /mnt/dataN automatically by cloud-init - no manual disk
+    management needed in the guest. This is for extra block storage; for
+    existing shared network storage (an NFS export, an SMB share, an S3
+    bucket), use additional_mounts instead. Verify the
+    vultr_block_storage resource schema against the current provider
+    docs before relying on this (see the README's verification note).
+  EOT
+  type = list(object({
+    size_gb = number
+  }))
+  default = []
+}
+
+variable "additional_mounts" {
+  description = <<-EOT
+    Existing network storage to mount inside the instance after boot -
+    e.g. an NFS export, an SMB/CIFS share, or an S3 bucket (via s3fs).
+    This does not create the storage itself, only mounts it - the source
+    must already exist.
+  EOT
+  type = list(object({
+    type        = string           # "nfs" | "smb" | "s3"
+    source      = string           # e.g. "203.0.113.5:/export", "//server/share", "my-bucket"
+    mount_point = string           # e.g. "/mnt/data"
+    options     = optional(string, "")
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for m in var.additional_mounts : contains(["nfs", "smb", "s3"], m.type)])
+    error_message = "additional_mounts[*].type must be one of: nfs, smb, s3."
+  }
 }

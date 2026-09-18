@@ -34,6 +34,28 @@ Everything above is infrastructure/host-layer lockdown. Site configuration,
 TLS certificates, and further OS hardening are expected to be layered on
 afterwards via Ansible over the SSH connection this template sets up.
 
+## Sizing and storage
+
+- **`vm_size`** controls both vCPU and memory together - Azure VM sizes are
+  fixed catalog SKUs, not independently dialable cores/memory. Use
+  `az vm list-sizes --location <region>` to pick one that matches what you
+  need.
+- **`os_disk_size_gb`** (default `null`, inherits the image's own size) and
+  **`os_disk_type`** control the OS disk.
+- **`data_disks`** attaches additional empty managed disks beyond the OS
+  disk (each `{ size_gb, type }`). cloud-init formats each one ext4 and
+  mounts it under `/mnt/dataN` automatically. See the `data_disk_ids`
+  output.
+- **`additional_mounts`** mounts *existing* network storage inside the VM
+  at boot - an NFS export (EFS, Filestore, NetApp Files, etc.), an
+  SMB/CIFS share (Azure Files, a generic NAS), or an S3 bucket (via
+  `s3fs`). This does not provision the storage itself. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "10.0.0.4:/export", mount_point = "/mnt/shared" },
+  ]
+  ```
+
 ## Usage
 
 ```hcl

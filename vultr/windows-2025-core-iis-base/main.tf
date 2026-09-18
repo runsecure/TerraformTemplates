@@ -7,8 +7,9 @@ locals {
   admin_password = coalesce(var.admin_password, try(random_password.admin[0].result, null))
 
   bootstrap_script_body = templatefile("${path.module}/scripts/bootstrap.ps1.tftpl", {
-    ssh_public_key = var.ssh_public_key
-    admin_password = local.admin_password
+    ssh_public_key         = var.ssh_public_key
+    admin_password         = local.admin_password
+    additional_mounts_json = jsonencode(var.additional_mounts)
   })
 
   # Cloudbase-Init (Vultr's Windows guest agent) only executes user_data as
@@ -96,4 +97,15 @@ resource "vultr_instance" "this" {
   activation_email  = var.activation_email
   user_data         = local.bootstrap_script
   tags              = concat([var.name_prefix], var.tags)
+}
+
+# Additional Block Storage volumes - initialized, brought online, and
+# formatted by the bootstrap script (see scripts/bootstrap.ps1.tftpl).
+resource "vultr_block_storage" "data" {
+  count = length(var.data_disks)
+
+  region               = var.region
+  size_gb              = var.data_disks[count.index].size_gb
+  label                = "${var.name_prefix}-data-${count.index}"
+  attached_to_instance = vultr_instance.this.id
 }

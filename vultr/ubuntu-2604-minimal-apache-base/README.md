@@ -58,6 +58,26 @@ Azure/AWS/GCP. The *only* network-layer boundary here is the
 - Apache is minimally configured: `ServerTokens Prod`, `ServerSignature Off`,
   `TraceEnable Off` to avoid leaking version/banner information.
 
+## Sizing and storage
+
+- **`plan`** bundles vCPU, memory, *and* the boot disk size together -
+  Vultr has no independent knobs for any of these. Pick a plan matching
+  what you need via `vultr-cli plans list`.
+- **`data_disks`** attaches additional Vultr Block Storage volumes beyond
+  the plan's included disk (each `{ size_gb }`). cloud-init formats each
+  one ext4 and mounts it under `/mnt/dataN` automatically. See the
+  `data_disk_ids` output. **Verify the `vultr_block_storage` resource's
+  exact schema** (particularly `attached_to_instance`) against the
+  current provider docs - see "Verify before use" above.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export, an SMB/CIFS share, or an S3 bucket
+  (via `s3fs`). This does not provision the storage itself. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "203.0.113.5:/export", mount_point = "/mnt/shared" },
+  ]
+  ```
+
 ## Usage
 
 ```hcl

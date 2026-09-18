@@ -124,6 +124,43 @@ if (Get-Module WebAdministration) {
         -PSPath "IIS:\" -Name "removeServerHeader" -Value $true -ErrorAction SilentlyContinue
 }
 
+# -----------------------------------------------------------------------
+# Additional local data disks (data_disks variable): bring online,
+# initialize, and format any raw disks Terraform attached. Idempotent -
+# already-initialized disks show a PartitionStyle other than RAW and are
+# skipped.
+# -----------------------------------------------------------------------
+Get-Disk | Where-Object { $_.PartitionStyle -eq "RAW" } | Sort-Object Number | ForEach-Object {
+    $diskNumber = $_.Number
+    Initialize-Disk -Number $diskNumber -PartitionStyle GPT -PassThru |
+        New-Partition -AssignDriveLetter -UseMaximumSize |
+        Format-Volume -FileSystem NTFS -NewFileSystemLabel "data$diskNumber" -Confirm:$false | Out-Null
+}
+
+# -----------------------------------------------------------------------
+# Additional network storage mounts (additional_mounts variable): NFS and
+# SMB/CIFS shares - e.g. an EFS mount target or a generic NAS SMB share.
+# This does not create the storage, only mounts it. S3 has no native
+# Windows mount path - use the AWS CLI/SDK or rclone instead.
+# -----------------------------------------------------------------------
+$additionalMounts = '${additional_mounts_json}' | ConvertFrom-Json
+foreach ($mount in $additionalMounts) {
+    switch ($mount.type) {
+        "smb" {
+            net use $mount.mount_point $mount.source /persistent:yes
+        }
+        "nfs" {
+            if (-not (Get-WindowsFeature -Name NFS-Client).Installed) {
+                Install-WindowsFeature -Name NFS-Client | Out-Null
+            }
+            & "$env:SystemRoot\System32\mount.exe" -o anon $mount.source $mount.mount_point
+        }
+        "s3" {
+            Write-Warning "S3 mounts are not natively supported on Windows - skipping $($mount.source). Use the AWS CLI/SDK or rclone instead."
+        }
+    }
+}
+
 Stop-Transcript
 
 if ($installResult.RestartNeeded -eq "Yes") {

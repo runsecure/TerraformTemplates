@@ -59,6 +59,30 @@ processing). Options:
   otherwise `package_update`/`package_upgrade` and the `apache2`/
   `fail2ban`/`unattended-upgrades` installs in cloud-init will fail.
 
+## Sizing and storage
+
+- **`instance_type`** controls both vCPU and memory together - EC2
+  instance types are fixed catalog bundles. You can *reduce* the vCPU
+  count of a chosen instance type via `cpu_core_count`/
+  `cpu_threads_per_core` (EC2's `cpu_options`); leave both null to use the
+  instance type's default.
+- **`root_volume_size`** controls the root EBS volume.
+- **`data_disks`** attaches additional empty EBS volumes beyond the root
+  volume (each `{ size_gb, type }`). cloud-init formats each one ext4 and
+  mounts it under `/mnt/dataN` automatically, discovering the actual
+  device name at boot rather than assuming `/dev/sdf` (Nitro instances
+  often remap to `/dev/xvdf` or NVMe device names). See the
+  `data_disk_ids` output.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export (an EFS mount target, etc.), an
+  SMB/CIFS share, or an S3 bucket (via `s3fs`). This does not provision
+  the storage itself. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "fs-0123.efs.us-east-1.amazonaws.com:/", mount_point = "/mnt/shared" },
+  ]
+  ```
+
 ## Usage
 
 ```hcl

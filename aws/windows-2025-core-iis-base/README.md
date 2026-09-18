@@ -62,6 +62,31 @@ processing). Options:
   otherwise the OpenSSH capability install (and any Windows Update–backed
   step) will fail.
 
+## Sizing and storage
+
+- **`instance_type`** controls both vCPU and memory together - EC2
+  instance types are fixed catalog bundles, not independently dialable.
+  You can *reduce* the vCPU count of a chosen instance type (e.g. for
+  per-core licensing) via `cpu_core_count`/`cpu_threads_per_core`, which
+  map to EC2's `cpu_options` block; leave both null to use the instance
+  type's default.
+- **`root_volume_size`** controls the root EBS volume.
+- **`data_disks`** attaches additional empty EBS volumes beyond the root
+  volume (each `{ size_gb, type }`). The bootstrap script brings each one
+  online, initializes it GPT, and formats it NTFS automatically. See the
+  `data_disk_ids` output.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export (an EFS mount target, etc.) or an
+  SMB/CIFS share (a generic NAS). This does not provision the storage
+  itself. S3 has no native Windows mount path, so `type = "s3"` entries
+  are skipped with a warning - use the AWS CLI/SDK or rclone from inside
+  the instance instead. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "fs-0123.efs.us-east-1.amazonaws.com:/", mount_point = "Z:" },
+  ]
+  ```
+
 ## What gets installed
 
 Via `Install-WindowsFeature` (see `scripts/bootstrap.ps1.tftpl`, delivered

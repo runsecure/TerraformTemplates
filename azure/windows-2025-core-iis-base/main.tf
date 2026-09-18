@@ -7,7 +7,8 @@ locals {
   admin_password      = coalesce(var.admin_password, try(random_password.admin[0].result, null))
 
   bootstrap_script = templatefile("${path.module}/scripts/bootstrap.ps1.tftpl", {
-    ssh_public_key = var.ssh_public_key
+    ssh_public_key         = var.ssh_public_key
+    additional_mounts_json = jsonencode(var.additional_mounts)
   })
 }
 
@@ -152,6 +153,7 @@ resource "azurerm_windows_virtual_machine" "this" {
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = var.os_disk_type
+    disk_size_gb         = var.os_disk_size_gb
   }
 
   secure_boot_enabled        = var.enable_trusted_launch
@@ -161,6 +163,29 @@ resource "azurerm_windows_virtual_machine" "this" {
   patch_mode = "AutomaticByPlatform"
 
   boot_diagnostics {}
+}
+
+# Additional data disks - initialized, brought online, and formatted by
+# the bootstrap script (see scripts/bootstrap.ps1.tftpl).
+resource "azurerm_managed_disk" "data" {
+  count = length(var.data_disks)
+
+  name                 = "${var.name_prefix}-data-${count.index}"
+  resource_group_name  = azurerm_resource_group.this.name
+  location             = azurerm_resource_group.this.location
+  storage_account_type = var.data_disks[count.index].type
+  create_option        = "Empty"
+  disk_size_gb         = var.data_disks[count.index].size_gb
+  tags                 = var.tags
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "data" {
+  count = length(var.data_disks)
+
+  managed_disk_id    = azurerm_managed_disk.data[count.index].id
+  virtual_machine_id = azurerm_windows_virtual_machine.this.id
+  lun                = count.index
+  caching            = "ReadWrite"
 }
 
 resource "azurerm_virtual_machine_extension" "bootstrap" {
@@ -176,4 +201,8 @@ resource "azurerm_virtual_machine_extension" "bootstrap" {
   })
 
   tags = var.tags
+
+  # Data disks must be attached before the bootstrap script runs, since it
+  # initializes/formats any raw disks it finds.
+  depends_on = [azurerm_virtual_machine_data_disk_attachment.data]
 }

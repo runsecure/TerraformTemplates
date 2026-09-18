@@ -5,9 +5,19 @@ resource "random_id" "suffix" {
 locals {
   network_tag = "${var.name_prefix}-vm"
 
+  # A custom machine type (independent vCPU/memory dialing) overrides
+  # machine_type entirely when both custom_cpu_count and custom_memory_mb
+  # are set.
+  machine_type = (
+    var.custom_cpu_count != null && var.custom_memory_mb != null
+    ? "custom-${var.custom_cpu_count}-${var.custom_memory_mb}"
+    : var.machine_type
+  )
+
   cloud_init = templatefile("${path.module}/scripts/cloud-init.yaml.tftpl", {
     enable_fail2ban            = var.enable_fail2ban
     enable_unattended_upgrades = var.enable_unattended_upgrades
+    additional_mounts          = var.additional_mounts
   })
 }
 
@@ -70,9 +80,20 @@ resource "google_compute_address" "this" {
 
 # --- Compute ------------------------------------------------------------
 
+# Additional data disks - formatted (ext4) and mounted under /mnt/dataN by
+# cloud-init (see scripts/cloud-init.yaml.tftpl).
+resource "google_compute_disk" "data" {
+  count = length(var.data_disks)
+
+  name = "${var.name_prefix}-data-${count.index}"
+  zone = var.zone
+  type = var.data_disks[count.index].type
+  size = var.data_disks[count.index].size_gb
+}
+
 resource "google_compute_instance" "this" {
   name         = "${var.name_prefix}-vm-${random_id.suffix.hex}"
-  machine_type = var.machine_type
+  machine_type = local.machine_type
   zone         = var.zone
   tags         = [local.network_tag]
   labels       = var.labels
@@ -82,6 +103,13 @@ resource "google_compute_instance" "this" {
       image = data.google_compute_image.ubuntu.self_link
       size  = var.boot_disk_size_gb
       type  = var.boot_disk_type
+    }
+  }
+
+  dynamic "attached_disk" {
+    for_each = google_compute_disk.data
+    content {
+      source = attached_disk.value.self_link
     }
   }
 

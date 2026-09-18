@@ -27,8 +27,9 @@ locals {
   admin_password = coalesce(var.admin_password, try(random_password.admin[0].result, null))
 
   bootstrap_script = templatefile("${path.module}/scripts/bootstrap.ps1.tftpl", {
-    ssh_public_key = var.ssh_public_key
-    admin_password = local.admin_password
+    ssh_public_key         = var.ssh_public_key
+    admin_password         = local.admin_password
+    additional_mounts_json = jsonencode(var.additional_mounts)
   })
 }
 
@@ -217,12 +218,40 @@ resource "aws_instance" "this" {
     encrypted   = true
   }
 
+  dynamic "cpu_options" {
+    for_each = var.cpu_core_count != null ? [1] : []
+    content {
+      core_count       = var.cpu_core_count
+      threads_per_core = var.cpu_threads_per_core
+    }
+  }
+
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
   }
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-vm" })
+}
+
+# Additional data volumes - initialized, brought online, and formatted by
+# the bootstrap script (see scripts/bootstrap.ps1.tftpl).
+resource "aws_ebs_volume" "data" {
+  count = length(var.data_disks)
+
+  availability_zone = aws_instance.this.availability_zone
+  size              = var.data_disks[count.index].size_gb
+  type              = var.data_disks[count.index].type
+  encrypted         = true
+  tags              = merge(var.tags, { Name = "${var.name_prefix}-data-${count.index}" })
+}
+
+resource "aws_volume_attachment" "data" {
+  count = length(var.data_disks)
+
+  device_name = "/dev/xvd${substr("fghijklmnop", count.index, 1)}"
+  volume_id   = aws_ebs_volume.data[count.index].id
+  instance_id = aws_instance.this.id
 }
 
 resource "aws_eip" "this" {

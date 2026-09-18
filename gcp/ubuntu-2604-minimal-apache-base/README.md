@@ -46,6 +46,28 @@ first time they run. This template does not provision Cloud NAT. If
 egress, those installs may fail - add Cloud NAT, or set
 `enable_public_ip = true`, if you hit this.
 
+## Sizing and storage
+
+- **`machine_type`** controls vCPU and memory together via a predefined
+  catalog SKU. GCP also lets you dial them independently with a **custom
+  machine type**: set both `custom_cpu_count` and `custom_memory_mb` to
+  build `custom-<cpus>-<memory_mb>` (this overrides `machine_type`
+  entirely).
+- **`boot_disk_size_gb`** / **`boot_disk_type`** control the boot disk.
+- **`data_disks`** attaches additional empty persistent disks beyond the
+  boot disk (each `{ size_gb, type }`). cloud-init formats each one ext4
+  and mounts it under `/mnt/dataN` automatically. See the `data_disk_ids`
+  output.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export (Filestore, etc.), an SMB/CIFS share,
+  or an S3(-compatible) bucket (via `s3fs`). This does not provision the
+  storage itself. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "10.0.0.4:/vol1", mount_point = "/mnt/shared" },
+  ]
+  ```
+
 ## Usage
 
 ```hcl

@@ -81,6 +81,50 @@ variable "os_disk_type" {
   default     = "StandardSSD_LRS"
 }
 
+variable "os_disk_size_gb" {
+  description = "OS disk size in GB. Leave null to use the image's default size."
+  type        = number
+  default     = null
+}
+
+variable "data_disks" {
+  description = <<-EOT
+    Additional managed data disks to attach to the VM beyond the OS disk.
+    Each is formatted (ext4) and mounted under /mnt/dataN automatically by
+    cloud-init - no manual disk management needed in the guest. This is
+    for extra local block storage; for existing shared network storage
+    (an NFS export, an SMB share, an S3 bucket), use additional_mounts
+    instead.
+  EOT
+  type = list(object({
+    size_gb = number
+    type    = optional(string, "StandardSSD_LRS")
+  }))
+  default = []
+}
+
+variable "additional_mounts" {
+  description = <<-EOT
+    Existing network storage to mount inside the VM after boot - e.g. an
+    NFS export (EFS, Filestore, NetApp Files, etc.), an SMB/CIFS share
+    (Azure Files, a generic NAS), or an S3 bucket (via s3fs). This does
+    not create the storage itself, only mounts it - the source must
+    already exist.
+  EOT
+  type = list(object({
+    type        = string           # "nfs" | "smb" | "s3"
+    source      = string           # e.g. "10.0.0.4:/export", "//server/share", "my-bucket"
+    mount_point = string           # e.g. "/mnt/data"
+    options     = optional(string, "")
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for m in var.additional_mounts : contains(["nfs", "smb", "s3"], m.type)])
+    error_message = "additional_mounts[*].type must be one of: nfs, smb, s3."
+  }
+}
+
 variable "image_publisher" {
   description = "Marketplace image publisher."
   type        = string

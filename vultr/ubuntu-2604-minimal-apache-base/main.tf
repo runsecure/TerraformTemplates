@@ -10,6 +10,7 @@ locals {
     ssh_public_key             = var.ssh_public_key
     enable_fail2ban            = var.enable_fail2ban
     enable_unattended_upgrades = var.enable_unattended_upgrades
+    additional_mounts          = var.additional_mounts
   })
 }
 
@@ -80,4 +81,15 @@ resource "vultr_instance" "this" {
   activation_email  = var.activation_email
   user_data         = local.cloud_init
   tags              = concat([var.name_prefix], var.tags)
+}
+
+# Additional Block Storage volumes - formatted (ext4) and mounted under
+# /mnt/dataN by cloud-init (see scripts/cloud-init.yaml.tftpl).
+resource "vultr_block_storage" "data" {
+  count = length(var.data_disks)
+
+  region               = var.region
+  size_gb              = var.data_disks[count.index].size_gb
+  label                = "${var.name_prefix}-data-${count.index}"
+  attached_to_instance = vultr_instance.this.id
 }

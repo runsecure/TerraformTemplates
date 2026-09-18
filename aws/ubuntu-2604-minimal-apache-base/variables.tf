@@ -100,6 +100,60 @@ variable "root_volume_size" {
   default     = 20
 }
 
+variable "cpu_core_count" {
+  description = <<-EOT
+    Override the number of physical CPU cores for instance_type (must be
+    <= that instance type's default core count - this can only reduce
+    cores, not increase them; EC2 instance types are otherwise fixed
+    vCPU/memory bundles). Leave null to use the instance type's default.
+  EOT
+  type        = number
+  default     = null
+}
+
+variable "cpu_threads_per_core" {
+  description = "Threads per core (1 disables hyperthreading). Only used when cpu_core_count is set."
+  type        = number
+  default     = null
+}
+
+variable "data_disks" {
+  description = <<-EOT
+    Additional EBS volumes to attach to the instance beyond the root
+    volume. Each is formatted (ext4) and mounted under /mnt/dataN
+    automatically by cloud-init - no manual disk management needed in the
+    guest. This is for extra local block storage; for existing shared
+    network storage (an NFS export, an SMB share, an S3 bucket), use
+    additional_mounts instead.
+  EOT
+  type = list(object({
+    size_gb = number
+    type    = optional(string, "gp3")
+  }))
+  default = []
+}
+
+variable "additional_mounts" {
+  description = <<-EOT
+    Existing network storage to mount inside the instance after boot -
+    e.g. an EFS mount target (NFS), an SMB/CIFS share (a generic NAS), or
+    an S3 bucket (via s3fs). This does not create the storage itself,
+    only mounts it - the source must already exist.
+  EOT
+  type = list(object({
+    type        = string           # "nfs" | "smb" | "s3"
+    source      = string           # e.g. "fs-0123.efs.us-east-1.amazonaws.com:/", "//server/share", "my-bucket"
+    mount_point = string           # e.g. "/mnt/data"
+    options     = optional(string, "")
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for m in var.additional_mounts : contains(["nfs", "smb", "s3"], m.type)])
+    error_message = "additional_mounts[*].type must be one of: nfs, smb, s3."
+  }
+}
+
 variable "ami_owner" {
   description = "Owner ID for the AMI lookup. Defaults to Canonical's official owner ID."
   type        = string

@@ -36,6 +36,30 @@ IIS site configuration, TLS certificates, and further OS hardening are
 expected to be layered on afterwards via Ansible over the SSH connection
 this template sets up.
 
+## Sizing and storage
+
+- **`vm_size`** controls both vCPU and memory together - Azure VM sizes are
+  fixed catalog SKUs, not independently dialable cores/memory. Use
+  `az vm list-sizes --location <region>` to pick one that matches what you
+  need.
+- **`os_disk_size_gb`** (default `null`, inherits the image's own size) and
+  **`os_disk_type`** control the OS disk.
+- **`data_disks`** attaches additional empty managed disks beyond the OS
+  disk (each `{ size_gb, type }`). The bootstrap script brings each one
+  online, initializes it GPT, and formats it NTFS automatically - no
+  manual disk management needed. See the `data_disk_ids` output.
+- **`additional_mounts`** mounts *existing* network storage inside the VM
+  at boot - an NFS export (EFS, Filestore, NetApp Files, etc.) or an
+  SMB/CIFS share (Azure Files, a generic NAS). This does not provision
+  the storage itself. S3 has no native Windows mount path, so `type = "s3"`
+  entries are skipped with a warning - use the AWS CLI/SDK or rclone from
+  inside the VM instead. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "smb", source = "\\\\myaccount.file.core.windows.net\\share", mount_point = "Z:" },
+  ]
+  ```
+
 ## What gets installed
 
 Via `Install-WindowsFeature` (see `scripts/bootstrap.ps1.tftpl`):

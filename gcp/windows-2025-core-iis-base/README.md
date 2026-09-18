@@ -54,6 +54,30 @@ doesn't otherwise provide egress, the bootstrap script's
 outbound internet access - add Cloud NAT, or set `enable_public_ip = true`,
 if you hit this.
 
+## Sizing and storage
+
+- **`machine_type`** controls vCPU and memory together via a predefined
+  catalog SKU. GCP also lets you dial them independently with a **custom
+  machine type**: set both `custom_cpu_count` and `custom_memory_mb` to
+  build `custom-<cpus>-<memory_mb>` (this overrides `machine_type`
+  entirely). Memory must be a multiple of 256 MB; most families need an
+  even vCPU count >= 2.
+- **`boot_disk_size_gb`** / **`boot_disk_type`** control the boot disk.
+- **`data_disks`** attaches additional empty persistent disks beyond the
+  boot disk (each `{ size_gb, type }`). The bootstrap script brings each
+  one online, initializes it GPT, and formats it NTFS automatically. See
+  the `data_disk_ids` output.
+- **`additional_mounts`** mounts *existing* network storage inside the
+  instance at boot - an NFS export (Filestore, etc.) or an SMB/CIFS share
+  (a generic NAS). This does not provision the storage itself. S3 has no
+  native Windows mount path, so `type = "s3"` entries are skipped with a
+  warning. Example:
+  ```hcl
+  additional_mounts = [
+    { type = "nfs", source = "10.0.0.4:/vol1", mount_point = "Z:" },
+  ]
+  ```
+
 ## What gets installed
 
 Via `Install-WindowsFeature` (see `scripts/bootstrap.ps1.tftpl`, delivered

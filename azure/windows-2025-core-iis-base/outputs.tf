@@ -38,3 +38,8 @@ output "network_security_group_id" {
   description = "Resource ID of the NSG protecting the VM's subnet."
   value       = azurerm_network_security_group.this.id
 }
+
+output "data_disk_ids" {
+  description = "Resource IDs of the additional data disks attached, if any (see the data_disks variable)."
+  value       = azurerm_managed_disk.data[*].id
+}

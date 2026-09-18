@@ -11,7 +11,14 @@ variable "region" {
 }
 
 variable "plan" {
-  description = "Vultr plan ID. See `vultr-cli plans list`."
+  description = <<-EOT
+    Vultr plan ID. Unlike the hyperscaler templates in this repo, vCPU,
+    memory, and the boot disk size are all bundled into this single plan
+    selection - Vultr has no separate boot-disk-size or independent
+    cpu/memory knobs. See `vultr-cli plans list` to pick a plan matching
+    what you need; use data_disks below for extra storage beyond what the
+    plan includes.
+  EOT
   type        = string
   default     = "vc2-2c-4gb"
 }
@@ -108,4 +115,44 @@ variable "tags" {
   description = "Tags applied to the instance."
   type        = list(string)
   default     = []
+}
+
+variable "data_disks" {
+  description = <<-EOT
+    Additional Vultr Block Storage volumes to attach to the instance
+    beyond the plan's included disk. Each is initialized, brought online,
+    and formatted (NTFS) automatically by the bootstrap script - no
+    manual disk management needed in the guest. This is for extra block
+    storage; for existing shared network storage (an NFS export, an SMB
+    share, an S3 bucket), use additional_mounts instead. Verify the
+    vultr_block_storage resource schema against the current provider
+    docs before relying on this (see the README's verification note).
+  EOT
+  type = list(object({
+    size_gb = number
+  }))
+  default = []
+}
+
+variable "additional_mounts" {
+  description = <<-EOT
+    Existing network storage to mount inside the instance after boot -
+    e.g. an NFS export (a cloud NAS export reachable over the internet or
+    a Vultr VPC), an SMB/CIFS share, or an S3 bucket. This does not
+    create the storage itself, only mounts it - the source must already
+    exist. S3 has no native Windows mount path; entries of type "s3" are
+    skipped with a warning - use the AWS CLI/SDK or rclone instead.
+  EOT
+  type = list(object({
+    type        = string           # "nfs" | "smb" | "s3"
+    source      = string           # e.g. "203.0.113.5:/export" or "\\\\server\\share"
+    mount_point = string           # drive letter, e.g. "Z:"
+    options     = optional(string, "")
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for m in var.additional_mounts : contains(["nfs", "smb", "s3"], m.type)])
+    error_message = "additional_mounts[*].type must be one of: nfs, smb, s3."
+  }
 }

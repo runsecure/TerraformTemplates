@@ -33,3 +33,8 @@ output "admin_password" {
   value       = local.admin_password
   sensitive   = true
 }
+
+output "data_disk_ids" {
+  description = "Self-links of the additional data disks attached, if any (see the data_disks variable)."
+  value       = google_compute_disk.data[*].self_link
+}
