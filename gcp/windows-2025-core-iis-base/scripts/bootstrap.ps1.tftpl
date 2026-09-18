@@ -1,0 +1,131 @@
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+Start-Transcript -Path "$env:SystemRoot\Temp\bootstrap.log" -Append
+
+# Deterministic break-glass credential (Terraform-generated/managed).
+net user Administrator "${admin_password}"
+
+# -----------------------------------------------------------------------
+# IIS + .NET Framework
+# -----------------------------------------------------------------------
+$webFeatures = @(
+    "Web-Server",
+    "Web-Common-Http",
+    "Web-Default-Doc",
+    "Web-Http-Errors",
+    "Web-Static-Content",
+    "Web-Http-Logging",
+    "Web-Request-Monitor",
+    "Web-Filtering",
+    "Web-Stat-Compression",
+    "Web-Mgmt-Console",
+    "NET-Framework-45-Core",
+    "NET-Framework-45-ASPNET",
+    "Web-Asp-Net45",
+    "Web-Net-Ext45",
+    "Web-ISAPI-Ext",
+    "Web-ISAPI-Filter"
+)
+$installResult = Install-WindowsFeature -Name $webFeatures -IncludeManagementTools
+
+# -----------------------------------------------------------------------
+# OpenSSH Server (management channel used by Ansible - no RDP/WinRM).
+# This requires outbound internet access (Windows Update) unless the
+# image already carries the capability payload locally - see the
+# template README.
+# -----------------------------------------------------------------------
+$sshCapability = Get-WindowsCapability -Online | Where-Object { $_.Name -like "OpenSSH.Server*" }
+if ($sshCapability.State -ne "Installed") {
+    Add-WindowsCapability -Online -Name $sshCapability.Name
+}
+
+Set-Service -Name sshd -StartupType Automatic
+
+$authorizedKeysPath = Join-Path $env:ProgramData "ssh\administrators_authorized_keys"
+Set-Content -Path $authorizedKeysPath -Value "${ssh_public_key}" -Encoding ascii -Force
+
+# OpenSSH refuses administrators_authorized_keys unless it is locked down to
+# SYSTEM and Administrators only.
+icacls $authorizedKeysPath /inheritance:r | Out-Null
+icacls $authorizedKeysPath /grant "SYSTEM:F" | Out-Null
+icacls $authorizedKeysPath /grant "Administrators:F" | Out-Null
+
+# Make Ansible's ssh connections land in PowerShell rather than cmd.exe.
+New-Item -Path "HKLM:\SOFTWARE\OpenSSH" -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell `
+    -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
+    -PropertyType String -Force | Out-Null
+
+$sshdConfigPath = Join-Path $env:ProgramData "ssh\sshd_config"
+$sshdConfig = Get-Content $sshdConfigPath
+$sshdConfig = $sshdConfig -replace '^#?\s*PasswordAuthentication.*', 'PasswordAuthentication no'
+$sshdConfig = $sshdConfig -replace '^#?\s*PubkeyAuthentication.*', 'PubkeyAuthentication yes'
+$sshdConfig = $sshdConfig -replace '^#?\s*KbdInteractiveAuthentication.*', 'KbdInteractiveAuthentication no'
+Set-Content -Path $sshdConfigPath -Value $sshdConfig -Encoding ascii
+
+Start-Service sshd
+Restart-Service sshd
+
+# -----------------------------------------------------------------------
+# Remove WinRM listeners - SSH is the only remote management channel.
+# -----------------------------------------------------------------------
+Stop-Service WinRM -Force -ErrorAction SilentlyContinue
+Set-Service WinRM -StartupType Disabled -ErrorAction SilentlyContinue
+Get-ChildItem WSMan:\localhost\Listener -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+# -----------------------------------------------------------------------
+# Host firewall: default-deny inbound, explicit allow for SSH/HTTP/HTTPS.
+# The VPC firewall rules are the primary boundary; this is
+# defense-in-depth at the host.
+# -----------------------------------------------------------------------
+Set-NetFirewallProfile -Profile Domain,Public,Private -DefaultInboundAction Block -DefaultOutboundAction Allow -Enabled True
+
+Disable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+
+New-NetFirewallRule -DisplayName "Allow SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+New-NetFirewallRule -DisplayName "Allow HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+New-NetFirewallRule -DisplayName "Allow HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+
+# -----------------------------------------------------------------------
+# Protocol / legacy component hardening
+# -----------------------------------------------------------------------
+Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction SilentlyContinue | Out-Null
+
+$schannelBase = "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols"
+$weakProtocols = @("SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1")
+foreach ($protocol in $weakProtocols) {
+    foreach ($side in @("Client", "Server")) {
+        $path = Join-Path (Join-Path $schannelBase $protocol) $side
+        New-Item -Path $path -Force | Out-Null
+        New-ItemProperty -Path $path -Name "Enabled" -Value 0 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $path -Name "DisabledByDefault" -Value 1 -PropertyType DWord -Force | Out-Null
+    }
+}
+foreach ($side in @("Client", "Server")) {
+    $path = Join-Path (Join-Path $schannelBase "TLS 1.2") $side
+    New-Item -Path $path -Force | Out-Null
+    New-ItemProperty -Path $path -Name "Enabled" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $path -Name "DisabledByDefault" -Value 0 -PropertyType DWord -Force | Out-Null
+}
+
+# Prefer strong cipher suites / TLS 1.2 for outbound .NET connections too.
+New-Item -Path "HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319" -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319" -Name "SchUseStrongCrypto" -Value 1 -PropertyType DWord -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319" -Name "SystemDefaultTlsVersions" -Value 1 -PropertyType DWord -Force | Out-Null
+
+# -----------------------------------------------------------------------
+# IIS: remove the default site's identifying banner. Application-specific
+# hardening belongs in Ansible.
+# -----------------------------------------------------------------------
+Import-Module WebAdministration -ErrorAction SilentlyContinue
+if (Get-Module WebAdministration) {
+    Set-WebConfigurationProperty -Filter "/system.webServer/security/requestFiltering" `
+        -PSPath "IIS:\" -Name "removeServerHeader" -Value $true -ErrorAction SilentlyContinue
+}
+
+Stop-Transcript
+
+if ($installResult.RestartNeeded -eq "Yes") {
+    shutdown.exe /r /t 60 /d p:4:1 /c "Post-provisioning restart to finalize IIS/.NET/hardening changes"
+}

@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and fill in for your environment. Do not commit
+# the real terraform.tfvars - it is gitignored by default.
+#
+# Also export your API key rather than putting it in a file:
+#   export VULTR_API_KEY="..."
+
+region      = "ewr"
+name_prefix = "web01"
+
+# Required: no default. Vultr instances always have a public IP, so this
+# firewall group is the only thing standing between SSH and the internet.
+admin_source_cidr_blocks = ["203.0.113.10/32"]
+
+# Required: the public key Ansible will authenticate with over SSH.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... ansible@control-node"
+
+# Optional overrides:
+# web_source_cidr_blocks = ["0.0.0.0/0"]
+# plan = "vc2-2c-4gb"
+# os_name_filter = "Windows 2025 x64"  # verify against `vultr-cli os list`
+# admin_username = "Administrator"
+# tags = ["dev", "platform-team"]

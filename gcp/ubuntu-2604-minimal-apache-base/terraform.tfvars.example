@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in for your environment. Do not commit
+# the real terraform.tfvars - it is gitignored by default.
+
+project_id  = "my-gcp-project"
+region      = "us-central1"
+zone        = "us-central1-a"
+name_prefix = "web01"
+
+# Required: no default. Restrict to your Ansible control node(s) / mgmt VPN.
+admin_source_cidr_ranges = ["203.0.113.10/32"]
+
+# Required: the public key Ansible will authenticate with over SSH.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... ansible@control-node"
+
+# Optional overrides:
+# enable_public_ip = true
+# web_source_cidr_ranges = ["0.0.0.0/0"]
+# machine_type = "e2-small"
+# admin_username = "ansible"
+# labels = { environment = "dev", owner = "platform-team" }

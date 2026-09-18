@@ -1,0 +1,63 @@
+#cloud-config
+ssh_pwauth: false
+
+users:
+  - name: ${admin_username}
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - apache2
+  - ufw
+%{ if enable_fail2ban ~}
+  - fail2ban
+%{ endif ~}
+%{ if enable_unattended_upgrades ~}
+  - unattended-upgrades
+%{ endif ~}
+
+write_files:
+  - path: /etc/apache2/conf-available/harden.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      ServerTokens Prod
+      ServerSignature Off
+      TraceEnable Off
+
+runcmd:
+  # Apache: minimal footprint, no version/banner disclosure.
+  - a2enconf harden
+  - systemctl enable apache2
+  - systemctl restart apache2
+
+  # SSH: no root login, no password auth (key-only). Ansible connects as
+  # the admin_username account created above.
+  - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+
+  # Host firewall: default-deny inbound, explicit allow for SSH/HTTP/HTTPS.
+  # The Vultr firewall group is the primary boundary; this is
+  # defense-in-depth at the host.
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+%{ if enable_fail2ban ~}
+  - systemctl enable --now fail2ban
+%{ endif ~}
+%{ if enable_unattended_upgrades ~}
+  - dpkg-reconfigure -f noninteractive unattended-upgrades
+  - systemctl enable --now unattended-upgrades
+%{ endif ~}

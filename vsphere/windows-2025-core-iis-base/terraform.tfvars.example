@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and fill in for your environment. Do not commit
+# the real terraform.tfvars - it is gitignored by default.
+#
+# Also export vCenter credentials rather than putting them in a file:
+#   export VSPHERE_SERVER="vcenter.lab.example.com"
+#   export VSPHERE_USER="administrator@vsphere.local"
+#   export VSPHERE_PASSWORD="..."
+
+datacenter    = "DC01"
+cluster       = "Cluster01"
+datastore     = "datastore1"
+network       = "VM Network"
+template_name = "win2025-core-golden"   # must already exist, sysprepped
+
+name_prefix = "web01"
+
+# Required: the public key Ansible will authenticate with over SSH.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... ansible@control-node"
+
+# Optional overrides:
+# vsphere_allow_unverified_ssl = true  # for self-signed lab certs
+# folder = "web/prod"
+# num_cpus = 2
+# memory_mb = 8192
+# ipv4_address = "10.10.10.50"
+# ipv4_prefix_length = 24
+# ipv4_gateway = "10.10.10.1"
+# dns_server_list = ["10.10.10.2"]

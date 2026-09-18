@@ -1,0 +1,10 @@
+network:
+  version: 2
+  ethernets:
+    ${interface_name}:
+      dhcp4: false
+      addresses:
+        - ${ipv4_address}/${ipv4_prefix}
+      gateway4: ${ipv4_gateway}
+      nameservers:
+        addresses: [${join(", ", dns_servers)}]
