@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in for your environment. Do not commit
+# the real terraform.tfvars - it is gitignored by default.
+
+aws_region  = "us-east-1"
+name_prefix = "web01"
+
+# Required: no default. Restrict to your Ansible control node(s) / mgmt VPN.
+admin_source_cidr_blocks = ["203.0.113.10/32"]
+
+# Required: the public key Ansible will authenticate with over SSH.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... ansible@control-node"
+
+# Optional overrides:
+# enable_public_ip   = true
+# enable_nat_gateway = false  # only if you already have egress another way
+# web_source_cidr_blocks = ["0.0.0.0/0"]
+# instance_type = "t3.small"
+# admin_username = "ubuntu"
+# tags = { environment = "dev", owner = "platform-team" }
